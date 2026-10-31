@@ -150,17 +150,36 @@ for c in ("lib/bluetooth/sdp.c", "lib/sdp.c"):
     if os.path.exists(os.path.join(root, c)):
         cand = os.path.join(root, c); break
 if not cand:
-    sys.exit("sdp.c not found under " + root)
+    sys.exit("ERROR: sdp.c not found under " + root)
 s = open(cand, encoding="utf-8", errors="surrogateescape").read()
 if "quirk_resent" in s:
     print("already patched:", cand); sys.exit(0)
-m = "struct sdp_transaction {"
-i = s.index(m); j = s.index("\n};", i)
+
+
+def need(haystack, needle, start=0):
+    """Locate an anchor or exit with a clear, actionable message instead of a
+    raw Python traceback, so an unrecognised BlueZ layout fails readably."""
+    pos = haystack.find(needle, start)
+    if pos < 0:
+        sys.exit(
+            "ERROR: could not find the code anchor:\n    " + needle + "\n"
+            "in " + cand + "\n"
+            "This BlueZ version's sdp.c layout is not recognised, so the patch\n"
+            "was NOT applied (your source is unchanged). Please open an issue at\n"
+            "https://github.com/momomorin/hori-ps4-133-steamdeck/issues with the\n"
+            "output of `bluetoothctl --version` so support can be added."
+        )
+    return pos
+
+
+# verified to apply on BlueZ 5.55 .. 5.87; anchors are stable across that range
+i = need(s, "struct sdp_transaction {")
+j = need(s, "\n};", i)
 s = s[:j] + "\n\tint quirk_resent;" + s[j:]
-d = "int sdp_process(sdp_session_t *session)"
-i = s.index(d); s = s[:i] + HELPERS.strip("\n") + "\n\n" + s[i:]
-mk = "if (reqhdr->tid != rsphdr->tid) {"
-i = s.index(mk); ls = s.rfind("\n", 0, i) + 1
+i = need(s, "int sdp_process(sdp_session_t *session)")
+s = s[:i] + HELPERS.strip("\n") + "\n\n" + s[i:]
+i = need(s, "if (reqhdr->tid != rsphdr->tid) {")
+ls = s.rfind("\n", 0, i) + 1
 s = s[:ls] + BLOCK.strip("\n") + "\n\n" + s[ls:]
 open(cand, "w", encoding="utf-8", errors="surrogateescape").write(s)
 print("patched:", cand)
